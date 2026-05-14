@@ -5,6 +5,12 @@
 //          This allows the chatbot to respond with empathy.
 // ============================================================
 
+/*
+ * Dialzara, 2025. Chatbot Sentiment Analysis: Complete Guide to Implementation and Optimization.
+ * [Online]. Available at: https://dialzara.com/blog/step-by-step-guide-to-adding-sentiment-analysis-to-chatbots
+ * [Accessed 12 May 2026].
+ */
+
 using System.Collections.Generic;
 
 namespace CyberSecurityBot.Services

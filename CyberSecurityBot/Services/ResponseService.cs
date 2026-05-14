@@ -107,6 +107,12 @@ namespace CyberSecurityBot.Services
             };
         }
 
+        /*
+         * Dialzara, 2025. Chatbot Sentiment Analysis: Complete Guide to Implementation and Optimization.
+         * [Online]. Available at: https://dialzara.com/blog/step-by-step-guide-to-adding-sentiment-analysis-to-chatbots
+         * [Accessed 11 May 2026].
+         */
+
         public string GetResponse(string input, MemoryService memory, SentimentAnalyzer sentimentAnalyzer)
         {
             string normalised = InputValidator.NormaliseInput(input);
@@ -188,6 +194,12 @@ namespace CyberSecurityBot.Services
             return false;
         }
 
+        /*
+         * C-Sharp Corner, 2025. How to Handle Follow-Up Questions and Maintain Context in Chatbots.
+         * [Online]. Available at: https://www.c-sharpcorner.com/article/how-to-handle-follow-up-questions-and-maintain-context-in-chatbots-easy-guide/
+         * [Accessed 12 May 2026].
+         */
+
         private string HandleFollowUp(string prefix, MemoryService memory)
         {
             string topic = !string.IsNullOrEmpty(memory.UserMemory.FavouriteTopic)
@@ -240,6 +252,12 @@ namespace CyberSecurityBot.Services
 
             return $"{prefix}No problem, let me explain differently. Which topic are you asking about: passwords, phishing, privacy, scams, malware, or safe browsing?";
         }
+
+        /*
+         * Microsoft, 2025. Implement sequential conversation flow - Bot Service.
+         * Microsoft Learn. [Online]. Available at: https://learn.microsoft.com/en-us/azure/bot-service/bot-builder-dialog-manage-conversation-flow
+         * [Accessed 11 May 2026].
+         */
 
         private int GetSequentialIndex(string topic, int count)
         {
@@ -304,6 +322,12 @@ namespace CyberSecurityBot.Services
             }
             return string.Empty;
         }
+
+        /*
+ * Stack Overflow Community, 2019. Parse returned text for specific set of words or phrases.
+ * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/56091373/parse-returned-text-for-specific-set-of-words-or-phrases
+ * [Accessed 11 May 2026].
+ */
 
         private string GetKeywordResponse(string input, string prefix, MemoryService memory)
         {

@@ -5,6 +5,12 @@
 //          Uses automatic properties as required by the module.
 // ============================================================
 
+/*
+ * Stack Overflow Community, 2011. Check if string is empty or all spaces in C#.
+ * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/7438957/check-if-string-is-empty-or-all-spaces-in-c-sharp
+ * [Accessed 12 May 2026].
+ */
+
 namespace CyberSecurityBot.Models
 {
     /// <summary>

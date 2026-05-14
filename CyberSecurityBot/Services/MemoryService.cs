@@ -5,6 +5,11 @@
 //          conversation context for personalised interactions.
 // ============================================================
 
+// References:
+// Maguire, J., 2024. Semantic Kernel: Using Memories to Create Intelligent AI Agents.
+// [Online]. Available at: https://jamiemaguire.net/index.php/2024/10/06/semantic-kernel-using-memories-to-create-intelligent-ai-agents/
+// [Accessed 11 May 2026].
+
 using CyberSecurityBot.Models;
 
 namespace CyberSecurityBot.Services
