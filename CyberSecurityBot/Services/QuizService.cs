@@ -1,7 +1,7 @@
 ﻿// ============================================================
 // File: Services/QuizService.cs
 // Purpose: Manages the cybersecurity quiz mini-game with scoring,
-//          immediate feedback, and final results.
+//          immediate feedback, final results, and engaging user experience.
 // ============================================================
 
 using System;
@@ -9,6 +9,12 @@ using System.Collections.Generic;
 
 namespace CyberSecurityBot.Services
 {
+    /*
+     * GeeksforGeeks, 2024. C# List and Dictionary for Quiz Application.
+     * [Online]. Available at: https://www.geeksforgeeks.org/c-sharp-list-class/
+     * [Accessed 15 June 2026].
+     */
+
     /// <summary>
     /// Manages the cybersecurity quiz mini-game.
     /// </summary>
@@ -18,27 +24,24 @@ namespace CyberSecurityBot.Services
         private int currentQuestionIndex;
         private int score;
         private bool isActive;
+        private List<string> userAnswers;
 
         public bool IsActive => isActive;
         public int CurrentQuestionNumber => currentQuestionIndex + 1;
         public int TotalQuestions => questions.Count;
 
-        /*
-         * GeeksforGeeks, 2024. C# List and Dictionary for Quiz Application.
-         * [Online]. Available at: https://www.geeksforgeeks.org/c-sharp-list-class/
-         * [Accessed 15 June 2026].
-         */
         public QuizService()
         {
             questions = new List<QuizQuestion>();
             currentQuestionIndex = 0;
             score = 0;
             isActive = false;
+            userAnswers = new List<string>();
             LoadQuestions();
         }
 
         /// <summary>
-        /// Loads all cybersecurity quiz questions.
+        /// Loads all cybersecurity quiz questions covering key topics.
         /// </summary>
         private void LoadQuestions()
         {
@@ -67,7 +70,7 @@ namespace CyberSecurityBot.Services
                 "What does 'https://' in a URL indicate?",
                 new List<string> { "The website is free", "The connection is encrypted", "The website is fast", "The website is new" },
                 1,
-                "Correct! HTTPS means the connection between your browser and the website is encrypted, protecting your data."
+                "Correct! HTTPS means the connection between your browser and the website is encrypted, protecting your data from eavesdroppers."
             ));
 
             questions.Add(new QuizQuestion(
@@ -95,7 +98,7 @@ namespace CyberSecurityBot.Services
                 "True or False: Public Wi-Fi is always safe for online banking.",
                 new List<string> { "True", "False" },
                 1,
-                "Correct! Public Wi-Fi is often unsecured. Hackers can intercept your data. Use a VPN or avoid sensitive transactions."
+                "Correct! Public Wi-Fi is often unsecured. Hackers can intercept your data. Use a VPN or avoid sensitive transactions on public networks."
             ));
 
             questions.Add(new QuizQuestion(
@@ -135,7 +138,8 @@ namespace CyberSecurityBot.Services
             isActive = true;
             currentQuestionIndex = 0;
             score = 0;
-            return GetCurrentQuestion();
+            userAnswers.Clear();
+            return "🎯 Welcome to the Cybersecurity Quiz!\n\nTest your knowledge and learn how to stay safe online.\n\n" + GetCurrentQuestion();
         }
 
         /// <summary>
@@ -147,7 +151,7 @@ namespace CyberSecurityBot.Services
                 return "No active quiz. Type 'start quiz' to begin!";
 
             QuizQuestion q = questions[currentQuestionIndex];
-            string result = $"Question {currentQuestionIndex + 1} of {questions.Count}:\n\n{q.Question}\n\n";
+            string result = $"📋 Question {currentQuestionIndex + 1} of {questions.Count}:\n\n{q.Question}\n\n";
 
             for (int i = 0; i < q.Options.Count; i++)
             {
@@ -155,7 +159,7 @@ namespace CyberSecurityBot.Services
                 result += $"{optionLetter}) {q.Options[i]}\n";
             }
 
-            result += "\nType the letter (A, B, C, or D) or number (1, 2) to answer.";
+            result += "\n💡 Type the letter (A, B, C, or D) or number (1, 2) to answer.";
             return result;
         }
 
@@ -169,30 +173,61 @@ namespace CyberSecurityBot.Services
 
             int selectedIndex = ParseAnswer(answer);
             if (selectedIndex < 0 || selectedIndex >= questions[currentQuestionIndex].Options.Count)
-                return "Please answer with the letter (A, B, C, D) or number (1, 2).";
+                return "❓ Please answer with the letter (A, B, C, D) or number (1, 2).";
 
             QuizQuestion currentQ = questions[currentQuestionIndex];
             bool isCorrect = selectedIndex == currentQ.CorrectAnswerIndex;
+            userAnswers.Add(answer.Trim().ToUpper());
 
             if (isCorrect)
                 score++;
 
-            string feedback = isCorrect ? "✅ Correct!" : "❌ Wrong!";
-            feedback += $"\n\n{currentQ.Explanation}\n\n";
-
+            // Varied feedback based on correctness
+            string feedback = GetVariedFeedback(isCorrect, currentQ.Explanation);
             currentQuestionIndex++;
 
             if (currentQuestionIndex >= questions.Count)
             {
                 isActive = false;
-                feedback += GetFinalResults();
+                feedback += "\n\n" + GetFinalResults();
             }
             else
             {
-                feedback += GetCurrentQuestion();
+                feedback += "\n\n" + GetCurrentQuestion();
             }
 
             return feedback;
+        }
+
+        /// <summary>
+        /// Gets varied feedback to keep the quiz engaging.
+        /// </summary>
+        private string GetVariedFeedback(bool isCorrect, string explanation)
+        {
+            Random rnd = new Random();
+
+            if (isCorrect)
+            {
+                string[] correctMessages = {
+                    "✅ Correct! Well done!",
+                    "✅ That's right! Excellent!",
+                    "✅ Correct! You're getting the hang of this!",
+                    "✅ Spot on! Great cybersecurity awareness!",
+                    "✅ Absolutely right! Keep it up!"
+                };
+                return correctMessages[rnd.Next(correctMessages.Length)] + "\n\n" + explanation;
+            }
+            else
+            {
+                string[] wrongMessages = {
+                    "❌ Not quite! Here's why:",
+                    "❌ Wrong answer, but don't worry — learn from this:",
+                    "❌ Incorrect, but this is a great learning opportunity!",
+                    "❌ That's not right. Here's the correct information:",
+                    "❌ Oops! Let's understand why:"
+                };
+                return wrongMessages[rnd.Next(wrongMessages.Length)] + "\n\n" + explanation;
+            }
         }
 
         /// <summary>
@@ -216,23 +251,45 @@ namespace CyberSecurityBot.Services
         }
 
         /// <summary>
-        /// Generates final quiz results with feedback.
+        /// Generates final quiz results with detailed feedback.
         /// </summary>
         private string GetFinalResults()
         {
             double percentage = (double)score / questions.Count * 100;
             string message;
+            string emoji;
+            string advice;
 
             if (percentage >= 90)
-                message = "🏆 Outstanding! You're a cybersecurity expert!";
+            {
+                emoji = "🏆";
+                message = "Outstanding! You're a cybersecurity expert!";
+                advice = "You clearly understand how to stay safe online. Consider sharing your knowledge with friends and family!";
+            }
             else if (percentage >= 70)
-                message = "🎉 Great job! You know your cybersecurity well!";
+            {
+                emoji = "🎉";
+                message = "Great job! You know your cybersecurity well!";
+                advice = "You have a solid foundation. Keep exploring advanced topics like social engineering and zero-trust security.";
+            }
             else if (percentage >= 50)
-                message = "👍 Good effort! Keep learning to stay safe online.";
+            {
+                emoji = "👍";
+                message = "Good effort! Keep learning to stay safe online.";
+                advice = "You're on the right track. Review the questions you got wrong and try the quiz again!";
+            }
             else
-                message = "📚 Keep learning! Cybersecurity is important for everyone.";
+            {
+                emoji = "📚";
+                message = "Keep learning! Cybersecurity is important for everyone.";
+                advice = "Don't worry — cybersecurity is a journey! Explore the topics you got wrong and come back to test yourself again.";
+            }
 
-            return $"=== QUIZ COMPLETE ===\n\nScore: {score}/{questions.Count} ({percentage:F0}%)\n\n{message}\n\nType 'start quiz' to try again!";
+            return $"=== {emoji} QUIZ COMPLETE ===\n\n" +
+                   $"📊 Score: {score}/{questions.Count} ({percentage:F0}%)\n\n" +
+                   $"📝 {message}\n\n" +
+                   $"💡 {advice}\n\n" +
+                   $"🔄 Type 'start quiz' to try again and improve your score!";
         }
 
         /// <summary>
@@ -241,7 +298,7 @@ namespace CyberSecurityBot.Services
         public string CancelQuiz()
         {
             isActive = false;
-            return "Quiz cancelled. Type 'start quiz' whenever you're ready!";
+            return "Quiz cancelled. You answered " + currentQuestionIndex + " out of " + questions.Count + " questions.\n\nType 'start quiz' whenever you're ready!";
         }
     }
 
