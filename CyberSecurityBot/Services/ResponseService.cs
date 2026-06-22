@@ -1,7 +1,8 @@
 ﻿// ============================================================
 // File: Services/ResponseService.cs
 // Purpose: Core chatbot response engine with sequential progression,
-//          proactive engagement, memory personalisation, and task management.
+//          proactive engagement, memory personalisation, task management,
+//          and cybersecurity quiz mini-game.
 // ============================================================
 
 using System;
@@ -24,6 +25,7 @@ namespace CyberSecurityBot.Services
         private bool awaitingReminderDate;
         private string pendingTaskTitle;
         private DatabaseService _databaseService;
+        private QuizService _quizService;
 
         public ResponseDelegate? CustomResponseHandler { get; set; }
 
@@ -38,6 +40,7 @@ namespace CyberSecurityBot.Services
             lastResponseIndex = new Dictionary<string, int>();
             tipsGivenCount = new Dictionary<string, int>();
             _databaseService = new DatabaseService();
+            _quizService = new QuizService();
 
             keywordResponses = new Dictionary<string, List<string>>()
             {
@@ -130,7 +133,27 @@ namespace CyberSecurityBot.Services
                 return "I didn't quite understand that. Could you rephrase?";
             }
 
-            // Check for task-related commands first
+            // Check for quiz commands first (if quiz is active)
+            if (_quizService.IsActive)
+            {
+                string quizResponse = _quizService.SubmitAnswer(normalised);
+                _databaseService.LogActivity("Quiz Answer", $"User answered question {_quizService.CurrentQuestionNumber}");
+                return quizResponse;
+            }
+
+            // Check for quiz start/cancel commands
+            if (normalised.Contains("start quiz") || normalised.Contains("quiz me") || normalised.Contains("take quiz"))
+            {
+                _databaseService.LogActivity("Quiz Started", "User started cybersecurity quiz");
+                return _quizService.StartQuiz();
+            }
+
+            if (normalised.Contains("cancel quiz") || normalised.Contains("stop quiz"))
+            {
+                return _quizService.CancelQuiz();
+            }
+
+            // Check for task-related commands
             string taskResponse = HandleTaskCommands(normalised, memory);
             if (!string.IsNullOrEmpty(taskResponse))
             {
@@ -525,7 +548,7 @@ namespace CyberSecurityBot.Services
 
             if (input.Contains("help") || input.Contains("what can you do") || input.Contains("what do you do") || input.Contains("purpose"))
             {
-                return $"{prefix}I'm here to help you stay safe online! I can give you tips on passwords, phishing, privacy, scams, malware, and safe browsing. Just ask me about any of these topics, or tell me what you're worried about.";
+                return $"{prefix}I'm here to help you stay safe online! I can give you tips on passwords, phishing, privacy, scams, malware, and safe browsing. I can also help you manage cybersecurity tasks or test your knowledge with a quiz. Just ask me about any of these topics!";
             }
 
             if (input.Contains("how are you") || input.Contains("how do you do"))

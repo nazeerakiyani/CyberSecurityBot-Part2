@@ -99,7 +99,38 @@ namespace CyberSecurityBot
             UserInputTextBox.Clear();
 
             string response = _responseService.GetResponse(input, _memoryService, _sentimentAnalyzer);
-            ShowBotMessage(response);
+
+            // Check if this is a quiz response with feedback + next question
+            if (response.Contains("=== QUIZ COMPLETE ==="))
+            {
+                ShowBotMessage(response);
+            }
+            else if (response.Contains("✅ Correct!") || response.Contains("❌ Wrong!"))
+            {
+                // Split feedback and next question
+                string[] parts = response.Split(new[] { "\n\n" }, StringSplitOptions.None);
+
+                // Show feedback first (Correct/Wrong + Explanation)
+                if (parts.Length >= 2)
+                {
+                    string feedback = parts[0] + "\n\n" + parts[1];
+                    ShowBotMessage(feedback);
+                }
+
+                // Show next question after a short delay
+                if (parts.Length > 2)
+                {
+                    string nextQuestion = string.Join("\n\n", parts, 2, parts.Length - 2);
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        ShowBotMessage(nextQuestion);
+                    }), DispatcherPriority.Background);
+                }
+            }
+            else
+            {
+                ShowBotMessage(response);
+            }
         }
 
         private void ShowUserMessage(string message)
