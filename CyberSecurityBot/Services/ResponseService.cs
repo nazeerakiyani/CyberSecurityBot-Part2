@@ -1,7 +1,7 @@
 ﻿// ============================================================
 // File: Services/ResponseService.cs
 // Purpose: Core chatbot response engine with sequential progression,
-//          proactive engagement, and memory personalisation.
+//          proactive engagement, memory personalisation, and task management.
 // ============================================================
 
 using System;
@@ -20,6 +20,10 @@ namespace CyberSecurityBot.Services
         private readonly Dictionary<string, int> tipsGivenCount;
         private string lastTopic;
         private bool awaitingName;
+        private bool awaitingTaskDescription;
+        private bool awaitingReminderDate;
+        private string pendingTaskTitle;
+        private DatabaseService _databaseService;
 
         public ResponseDelegate? CustomResponseHandler { get; set; }
 
@@ -28,8 +32,12 @@ namespace CyberSecurityBot.Services
             random = new Random();
             lastTopic = string.Empty;
             awaitingName = true;
+            awaitingTaskDescription = false;
+            awaitingReminderDate = false;
+            pendingTaskTitle = string.Empty;
             lastResponseIndex = new Dictionary<string, int>();
             tipsGivenCount = new Dictionary<string, int>();
+            _databaseService = new DatabaseService();
 
             keywordResponses = new Dictionary<string, List<string>>()
             {
@@ -110,7 +118,7 @@ namespace CyberSecurityBot.Services
         /*
          * Dialzara, 2025. Chatbot Sentiment Analysis: Complete Guide to Implementation and Optimization.
          * [Online]. Available at: https://dialzara.com/blog/step-by-step-guide-to-adding-sentiment-analysis-to-chatbots
-         * [Accessed 11 May 2026].
+         * [Accessed 15 June 2026].
          */
 
         public string GetResponse(string input, MemoryService memory, SentimentAnalyzer sentimentAnalyzer)
@@ -120,6 +128,13 @@ namespace CyberSecurityBot.Services
             if (string.IsNullOrWhiteSpace(normalised))
             {
                 return "I didn't quite understand that. Could you rephrase?";
+            }
+
+            // Check for task-related commands first
+            string taskResponse = HandleTaskCommands(normalised, memory);
+            if (!string.IsNullOrEmpty(taskResponse))
+            {
+                return taskResponse;
             }
 
             Sentiment sentiment = sentimentAnalyzer.AnalyzeSentiment(input);
@@ -166,6 +181,139 @@ namespace CyberSecurityBot.Services
             return $"{empatheticPrefix}I'm not sure I understand. Can you try rephrasing? I can help with topics like passwords, phishing, privacy, scams, malware, and safe browsing. Or just tell me what you're worried about!";
         }
 
+        /*
+         * Stack Overflow Community, 2022. C# chatbot command parsing with string manipulation.
+         * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/71019031/c-sharp-chatbot-command-parsing-with-string-manipulation
+         * [Accessed 15 June 2026].
+         */
+
+        private string HandleTaskCommands(string input, MemoryService memory)
+        {
+            // Add task flow
+            if (awaitingTaskDescription)
+            {
+                pendingTaskTitle = input;
+                awaitingTaskDescription = false;
+                awaitingReminderDate = true;
+                return $"Task added with the description \"{input}\". Would you like a reminder? If yes, type how many days (e.g., '3 days'), or type 'no'.";
+            }
+
+            if (awaitingReminderDate)
+            {
+                awaitingReminderDate = false;
+                if (input.Contains("no") || input.Contains("0"))
+                {
+                    bool success = _databaseService.AddTask(pendingTaskTitle, pendingTaskTitle, null);
+                    if (success)
+                    {
+                        _databaseService.LogActivity("Task Added", $"Added task: {pendingTaskTitle} with no reminder");
+                        return $"Task added successfully! You can view your tasks by typing 'show my tasks'.";
+                    }
+                    return "Sorry, I couldn't add that task. Please try again.";
+                }
+
+                int days = ExtractDaysFromInput(input);
+                if (days > 0)
+                {
+                    DateTime reminderDate = DateTime.Now.AddDays(days);
+                    bool success = _databaseService.AddTask(pendingTaskTitle, pendingTaskTitle, reminderDate);
+                    if (success)
+                    {
+                        _databaseService.LogActivity("Task Added", $"Added task: {pendingTaskTitle} with reminder in {days} days");
+                        return $"Got it! I'll remind you in {days} days. Task added successfully!";
+                    }
+                }
+                return "I didn't understand the reminder time. Please try again with something like '3 days'.";
+            }
+
+            // Start add task
+            if (input.Contains("add task") || input.Contains("new task") || input.Contains("create task"))
+            {
+                awaitingTaskDescription = true;
+                return "What task would you like to add? Please describe it (e.g., 'Review privacy settings').";
+            }
+
+            // View tasks
+            if (input.Contains("show my tasks") || input.Contains("view tasks") || input.Contains("list tasks") || input.Contains("my tasks"))
+            {
+                List<string> tasks = _databaseService.GetAllTasks();
+                if (tasks.Count == 0)
+                {
+                    return "You don't have any tasks yet. Type 'add task' to create one!";
+                }
+
+                string response = "Here are your cybersecurity tasks:\n\n";
+                foreach (string task in tasks)
+                {
+                    response += task + "\n\n";
+                }
+                _databaseService.LogActivity("Viewed Tasks", "User viewed their task list");
+                return response.Trim();
+            }
+
+            // Complete task
+            if (input.Contains("complete task") || input.Contains("mark task") || input.Contains("done task"))
+            {
+                int taskId = ExtractTaskId(input);
+                if (taskId > 0)
+                {
+                    bool success = _databaseService.MarkTaskAsCompleted(taskId);
+                    if (success)
+                    {
+                        _databaseService.LogActivity("Task Completed", $"Marked task #{taskId} as completed");
+                        return $"Task #{taskId} marked as completed! Great job staying on top of your cybersecurity.";
+                    }
+                    return $"Couldn't find task #{taskId}. Type 'show my tasks' to see your task IDs.";
+                }
+                return "Please specify which task number to complete (e.g., 'complete task 1').";
+            }
+
+            // Delete task
+            if (input.Contains("delete task") || input.Contains("remove task"))
+            {
+                int taskId = ExtractTaskId(input);
+                if (taskId > 0)
+                {
+                    bool success = _databaseService.DeleteTask(taskId);
+                    if (success)
+                    {
+                        _databaseService.LogActivity("Task Deleted", $"Deleted task #{taskId}");
+                        return $"Task #{taskId} deleted successfully.";
+                    }
+                    return $"Couldn't find task #{taskId}. Type 'show my tasks' to see your task IDs.";
+                }
+                return "Please specify which task number to delete (e.g., 'delete task 1').";
+            }
+
+            return string.Empty;
+        }
+
+        private int ExtractDaysFromInput(string input)
+        {
+            string[] words = input.Split(' ');
+            for (int i = 0; i < words.Length; i++)
+            {
+                if (int.TryParse(words[i], out int days) && days > 0 && days <= 365)
+                {
+                    return days;
+                }
+            }
+            return 0;
+        }
+
+        private int ExtractTaskId(string input)
+        {
+            string[] words = input.Split(' ');
+            for (int i = 0; i < words.Length; i++)
+            {
+                if (int.TryParse(words[i], out int id) && id > 0)
+                {
+                    return id;
+                }
+            }
+            return 0;
+        }
+
         private bool IsFollowUpRequest(string input)
         {
             string[] followUpPhrases = { "another", "more", "explain", "tell me more", "give me another", "what else", "anything else", "continue", "next tip" };
@@ -197,7 +345,7 @@ namespace CyberSecurityBot.Services
         /*
          * C-Sharp Corner, 2025. How to Handle Follow-Up Questions and Maintain Context in Chatbots.
          * [Online]. Available at: https://www.c-sharpcorner.com/article/how-to-handle-follow-up-questions-and-maintain-context-in-chatbots-easy-guide/
-         * [Accessed 12 May 2026].
+         * [Accessed 15 June 2026].
          */
 
         private string HandleFollowUp(string prefix, MemoryService memory)
@@ -256,7 +404,7 @@ namespace CyberSecurityBot.Services
         /*
          * Microsoft, 2025. Implement sequential conversation flow - Bot Service.
          * Microsoft Learn. [Online]. Available at: https://learn.microsoft.com/en-us/azure/bot-service/bot-builder-dialog-manage-conversation-flow
-         * [Accessed 11 May 2026].
+         * [Accessed 15 June 2026].
          */
 
         private int GetSequentialIndex(string topic, int count)
@@ -278,11 +426,11 @@ namespace CyberSecurityBot.Services
             var suggestions = new Dictionary<string, string>()
             {
                 { "password", "You've learned a lot about passwords! Would you like to explore phishing awareness next, or shall I quiz you on what you've learned so far?" },
-                { "phishing", "Great progress on phishing! Ready to learn about malware protection, or would you like me to test your knowledge with a quick quiz?" },
-                { "privacy", "Excellent work on privacy settings! Want to dive into safe browsing habits next, or shall we do a quick quiz to reinforce what you've learned?" },
-                { "scam", "You're becoming scam-savvy! Should we explore password security next, or would you like a quiz to test your scam-spotting skills?" },
-                { "malware", "Strong malware knowledge! Want to learn about phishing next, or shall I quiz you on protecting your devices?" },
-                { "browsing", "Great browsing safety awareness! Ready to learn about privacy settings, or shall we test your knowledge with a quiz?" }
+                { "phishing", "Great progress on phishing! Ready to learn about malware protection, or would you like a quick quiz?" },
+                { "privacy", "Excellent work on privacy settings! Want to dive into safe browsing habits next, or shall we do a quick quiz?" },
+                { "scam", "You're becoming scam-savvy! Should we explore password security next, or would you like a quiz?" },
+                { "malware", "Strong malware knowledge! Want to learn about phishing next, or shall I quiz you?" },
+                { "browsing", "Great browsing safety awareness! Ready to learn about privacy settings, or shall we test your knowledge?" }
             };
 
             if (suggestions.ContainsKey(currentTopic))
@@ -324,10 +472,10 @@ namespace CyberSecurityBot.Services
         }
 
         /*
- * Stack Overflow Community, 2019. Parse returned text for specific set of words or phrases.
- * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/56091373/parse-returned-text-for-specific-set-of-words-or-phrases
- * [Accessed 11 May 2026].
- */
+         * Stack Overflow Community, 2019. Parse returned text for specific set of words or phrases.
+         * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/56091373/parse-returned-text-for-specific-set-of-words-or-phrases
+         * [Accessed 15 June 2026].
+         */
 
         private string GetKeywordResponse(string input, string prefix, MemoryService memory)
         {
@@ -404,6 +552,9 @@ namespace CyberSecurityBot.Services
             lastTopic = string.Empty;
             lastResponseIndex.Clear();
             tipsGivenCount.Clear();
+            awaitingTaskDescription = false;
+            awaitingReminderDate = false;
+            pendingTaskTitle = string.Empty;
         }
     }
 }

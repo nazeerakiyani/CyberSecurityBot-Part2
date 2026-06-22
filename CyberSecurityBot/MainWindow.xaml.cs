@@ -26,6 +26,10 @@ namespace CyberSecurityBot
             _memoryService = new MemoryService();
             _sentimentAnalyzer = new SentimentAnalyzer();
 
+            // Test database connection on startup
+            DatabaseService db = new DatabaseService();
+            ShowBotMessage(db.TestConnectionMessage());
+
             SendButton.Click += SendButton_Click;
             UserInputTextBox.KeyDown += UserInputTextBox_KeyDown;
 
@@ -62,7 +66,7 @@ namespace CyberSecurityBot
                 SoundPlayer player = new SoundPlayer("greeting.wav");
                 player.Play();
             }
-            catch (Exception )
+            catch (Exception)
             {
                 ShowBotMessage("[Voice greeting unavailable]");
             }

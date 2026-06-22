@@ -1,0 +1,254 @@
+﻿// ============================================================
+// File: Services/DatabaseService.cs
+// Purpose: Handles all MySQL database operations for the chatbot.
+//          Includes task CRUD and activity logging.
+// ============================================================
+
+using System;
+using System.Collections.Generic;
+using MySql.Data.MySqlClient;
+
+namespace CyberSecurityBot.Services
+{
+    /// <summary>
+    /// Manages database connections and operations for tasks and activity logs.
+    /// </summary>
+    public class DatabaseService
+    {
+        // Connection string - connects to your local MySQL database
+        private readonly string connectionString = "Server=localhost;Database=cybersecurity_bot;Uid=root;Pwd=mnkfoa6mam;";
+
+        /*
+         * Oracle. 2024. MySQL Connector/NET Developer Guide. MySQL Documentation.
+         * [Online]. Available at: https://dev.mysql.com/doc/connector-net/en/
+         * [Accessed 22 June 2026].
+         */
+        public bool TestConnection()
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    return true;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Tests the database connection and returns a user-friendly message.
+        /// </summary>
+        /// <returns>Connection status message</returns>
+        public string TestConnectionMessage()
+        {
+            if (TestConnection())
+                return "Database connected successfully!";
+            else
+                return "Database connection failed. Check your MySQL password.";
+        }
+
+        // ==================== TASK OPERATIONS ====================
+
+        /*
+         * Stack Overflow Community, 2020. C# MySQL insert query with parameters.
+         * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/65229757/c-sharp-mysql-insert-query-with-parameters
+         * [Accessed 22 June 2026].
+         */
+        public bool AddTask(string title, string description, DateTime? reminderDate = null)
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = "INSERT INTO tasks (title, description, reminder_date) VALUES (@title, @description, @reminderDate)";
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@title", title);
+                        cmd.Parameters.AddWithValue("@description", description);
+                        cmd.Parameters.AddWithValue("@reminderDate", reminderDate ?? (object)DBNull.Value);
+
+                        int rowsAffected = cmd.ExecuteNonQuery();
+                        return rowsAffected > 0;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /*
+         * C-Sharp Corner, 2023. CRUD Operations in C# with MySQL Database.
+         * [Online]. Available at: https://www.c-sharpcorner.com/article/crud-operations-in-c-sharp-with-mysql-database/
+         * [Accessed 22 June 2026].
+         */
+        public List<string> GetAllTasks()
+        {
+            List<string> tasks = new List<string>();
+
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = "SELECT id, title, description, reminder_date, is_completed FROM tasks ORDER BY created_at DESC";
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    using (MySqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            int id = reader.GetInt32("id");
+                            string title = reader.GetString("title");
+                            string description = reader.IsDBNull(reader.GetOrdinal("description")) ? "No description" : reader.GetString("description");
+                            string reminder = reader.IsDBNull(reader.GetOrdinal("reminder_date")) ? "No reminder" : reader.GetDateTime("reminder_date").ToString("yyyy-MM-dd");
+                            bool completed = reader.GetBoolean("is_completed");
+
+                            string status = completed ? "[COMPLETED]" : "[PENDING]";
+                            tasks.Add($"{status} Task #{id}: {title} - {description} (Reminder: {reminder})");
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                tasks.Add("Error loading tasks.");
+            }
+
+            return tasks;
+        }
+
+        /*
+         * GeeksforGeeks, 2024. Update and Delete Data in MySQL using C#.
+         * [Online]. Available at: https://www.geeksforgeeks.org/update-and-delete-data-in-mysql-using-c-sharp/
+         * [Accessed 22 June 2026].
+         */
+        public bool MarkTaskAsCompleted(int taskId)
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = "UPDATE tasks SET is_completed = TRUE WHERE id = @taskId";
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@taskId", taskId);
+                        return cmd.ExecuteNonQuery() > 0;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /*
+         * TutorialsTeacher, 2024. C# MySQL Delete Operation.
+         * [Online]. Available at: https://www.tutorialsteacher.com/csharp/csharp-mysql-delete
+         * [Accessed 22 June 2026].
+         */
+        public bool DeleteTask(int taskId)
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = "DELETE FROM tasks WHERE id = @taskId";
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@taskId", taskId);
+                        return cmd.ExecuteNonQuery() > 0;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // ==================== ACTIVITY LOG OPERATIONS ====================
+
+        /*
+         * Stack Overflow Community, 2021. Best practice for logging in C# application with database.
+         * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/68107055/best-practice-for-logging-in-c-sharp-application-with-database
+         * [Accessed 22 June 2026].
+         */
+        public void LogActivity(string actionType, string description)
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = "INSERT INTO activity_log (action_type, description) VALUES (@actionType, @description)";
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@actionType", actionType);
+                        cmd.Parameters.AddWithValue("@description", description);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Silently fail - activity log should not crash the bot
+            }
+        }
+
+        /*
+         * C-Sharp Corner, 2022. Retrieve Data from MySQL Database in C#.
+         * [Online]. Available at: https://www.c-sharpcorner.com/article/retrieve-data-from-mysql-database-in-c-sharp/
+         * [Accessed 22 June 2026].
+         */
+        public List<string> GetRecentActivities(int limit = 10)
+        {
+            List<string> activities = new List<string>();
+
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = "SELECT action_type, description, timestamp FROM activity_log ORDER BY timestamp DESC LIMIT @limit";
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@limit", limit);
+
+                        using (MySqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                string actionType = reader.GetString("action_type");
+                                string description = reader.GetString("description");
+                                DateTime timestamp = reader.GetDateTime("timestamp");
+
+                                activities.Add($"[{timestamp:yyyy-MM-dd HH:mm}] {actionType}: {description}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                activities.Add("Error loading activity log.");
+            }
+
+            return activities;
+        }
+    }
+}
