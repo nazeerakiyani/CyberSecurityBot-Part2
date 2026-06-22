@@ -1,4 +1,11 @@
-﻿using System;
+﻿// ============================================================
+// File: Services/DatabaseService.cs
+// Purpose: Handles all MySQL database operations for the chatbot.
+//          Includes task CRUD, activity logging with detailed descriptions,
+//          and retrieval with pagination support.
+// ============================================================
+
+using System;
 using System.Collections.Generic;
 using MySql.Data.MySqlClient;
 
@@ -102,10 +109,38 @@ namespace CyberSecurityBot.Services
                             int id = reader.GetInt32("id");
                             string title = reader.GetString("title");
                             string description = reader.IsDBNull(reader.GetOrdinal("description")) ? "No description" : reader.GetString("description");
-                            string reminder = reader.IsDBNull(reader.GetOrdinal("reminder_date")) ? "No reminder" : reader.GetDateTime("reminder_date").ToString("yyyy-MM-dd");
-                            bool completed = reader.GetBoolean("is_completed");
 
-                            string status = completed ? "[COMPLETED]" : "[PENDING]";
+                            // Enhanced reminder display with overdue detection
+                            string reminder;
+                            if (reader.IsDBNull(reader.GetOrdinal("reminder_date")))
+                            {
+                                reminder = "No reminder";
+                            }
+                            else
+                            {
+                                DateTime remDate = reader.GetDateTime("reminder_date");
+                                bool completed = reader.GetBoolean("is_completed");
+
+                                if (remDate < DateTime.Now && !completed)
+                                {
+                                    reminder = $"OVERDUE since {remDate:yyyy-MM-dd}!";
+                                }
+                                else if (remDate.Date == DateTime.Now.Date && !completed)
+                                {
+                                    reminder = $"DUE TODAY ({remDate:yyyy-MM-dd})!";
+                                }
+                                else if (completed)
+                                {
+                                    reminder = $"Completed (was due {remDate:yyyy-MM-dd})";
+                                }
+                                else
+                                {
+                                    reminder = remDate.ToString("yyyy-MM-dd");
+                                }
+                            }
+
+                            bool isCompleted = reader.GetBoolean("is_completed");
+                            string status = isCompleted ? "[COMPLETED]" : "[PENDING]";
                             tasks.Add($"{status} Task #{id}: {title} - {description} (Reminder: {reminder})");
                         }
                     }
