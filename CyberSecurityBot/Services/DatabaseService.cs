@@ -1,8 +1,8 @@
 ﻿// ============================================================
 // File: Services/DatabaseService.cs
 // Purpose: Handles all MySQL database operations for the chatbot.
-//          Includes task CRUD, activity logging with detailed descriptions,
-//          and retrieval with pagination support.
+//          Includes task CRUD with validation, activity logging,
+//          and robust error handling.
 // ============================================================
 
 using System;
@@ -34,8 +34,9 @@ namespace CyberSecurityBot.Services
                     return true;
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"DB Connection Error: {ex.Message}");
                 return false;
             }
         }
@@ -61,6 +62,19 @@ namespace CyberSecurityBot.Services
          */
         public bool AddTask(string title, string description, DateTime? reminderDate = null)
         {
+            // Validation: title cannot be empty
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                System.Diagnostics.Debug.WriteLine("AddTask failed: Title cannot be empty");
+                return false;
+            }
+
+            // Validation: title max length
+            if (title.Length > 255)
+            {
+                title = title.Substring(0, 255);
+            }
+
             try
             {
                 using (MySqlConnection conn = new MySqlConnection(connectionString))
@@ -70,8 +84,8 @@ namespace CyberSecurityBot.Services
 
                     using (MySqlCommand cmd = new MySqlCommand(query, conn))
                     {
-                        cmd.Parameters.AddWithValue("@title", title);
-                        cmd.Parameters.AddWithValue("@description", description);
+                        cmd.Parameters.AddWithValue("@title", title.Trim());
+                        cmd.Parameters.AddWithValue("@description", string.IsNullOrWhiteSpace(description) ? (object)DBNull.Value : description.Trim());
                         cmd.Parameters.AddWithValue("@reminderDate", reminderDate ?? (object)DBNull.Value);
 
                         int rowsAffected = cmd.ExecuteNonQuery();
@@ -79,8 +93,14 @@ namespace CyberSecurityBot.Services
                     }
                 }
             }
-            catch (Exception)
+            catch (MySqlException ex)
             {
+                System.Diagnostics.Debug.WriteLine($"MySQL Error in AddTask: {ex.Message}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in AddTask: {ex.Message}");
                 return false;
             }
         }
@@ -146,12 +166,42 @@ namespace CyberSecurityBot.Services
                     }
                 }
             }
-            catch (Exception)
+            catch (MySqlException ex)
             {
-                tasks.Add("Error loading tasks.");
+                tasks.Add($"Database error loading tasks: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                tasks.Add($"Error loading tasks: {ex.Message}");
             }
 
             return tasks;
+        }
+
+        /// <summary>
+        /// Gets a single task by ID for verification.
+        /// </summary>
+        public bool TaskExists(int taskId)
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = "SELECT COUNT(*) FROM tasks WHERE id = @taskId";
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@taskId", taskId);
+                        int count = Convert.ToInt32(cmd.ExecuteScalar());
+                        return count > 0;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /*
@@ -161,6 +211,13 @@ namespace CyberSecurityBot.Services
          */
         public bool MarkTaskAsCompleted(int taskId)
         {
+            // Verify task exists first
+            if (!TaskExists(taskId))
+            {
+                System.Diagnostics.Debug.WriteLine($"MarkTaskAsCompleted failed: Task #{taskId} does not exist");
+                return false;
+            }
+
             try
             {
                 using (MySqlConnection conn = new MySqlConnection(connectionString))
@@ -171,12 +228,19 @@ namespace CyberSecurityBot.Services
                     using (MySqlCommand cmd = new MySqlCommand(query, conn))
                     {
                         cmd.Parameters.AddWithValue("@taskId", taskId);
-                        return cmd.ExecuteNonQuery() > 0;
+                        int rowsAffected = cmd.ExecuteNonQuery();
+                        return rowsAffected > 0;
                     }
                 }
             }
-            catch (Exception)
+            catch (MySqlException ex)
             {
+                System.Diagnostics.Debug.WriteLine($"MySQL Error in MarkTaskAsCompleted: {ex.Message}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in MarkTaskAsCompleted: {ex.Message}");
                 return false;
             }
         }
@@ -188,6 +252,13 @@ namespace CyberSecurityBot.Services
          */
         public bool DeleteTask(int taskId)
         {
+            // Verify task exists first
+            if (!TaskExists(taskId))
+            {
+                System.Diagnostics.Debug.WriteLine($"DeleteTask failed: Task #{taskId} does not exist");
+                return false;
+            }
+
             try
             {
                 using (MySqlConnection conn = new MySqlConnection(connectionString))
@@ -198,12 +269,19 @@ namespace CyberSecurityBot.Services
                     using (MySqlCommand cmd = new MySqlCommand(query, conn))
                     {
                         cmd.Parameters.AddWithValue("@taskId", taskId);
-                        return cmd.ExecuteNonQuery() > 0;
+                        int rowsAffected = cmd.ExecuteNonQuery();
+                        return rowsAffected > 0;
                     }
                 }
             }
-            catch (Exception)
+            catch (MySqlException ex)
             {
+                System.Diagnostics.Debug.WriteLine($"MySQL Error in DeleteTask: {ex.Message}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in DeleteTask: {ex.Message}");
                 return false;
             }
         }
@@ -217,6 +295,9 @@ namespace CyberSecurityBot.Services
          */
         public void LogActivity(string actionType, string description)
         {
+            if (string.IsNullOrWhiteSpace(actionType))
+                return;
+
             try
             {
                 using (MySqlConnection conn = new MySqlConnection(connectionString))
@@ -226,15 +307,19 @@ namespace CyberSecurityBot.Services
 
                     using (MySqlCommand cmd = new MySqlCommand(query, conn))
                     {
-                        cmd.Parameters.AddWithValue("@actionType", actionType);
-                        cmd.Parameters.AddWithValue("@description", description);
+                        cmd.Parameters.AddWithValue("@actionType", actionType.Trim());
+                        cmd.Parameters.AddWithValue("@description", string.IsNullOrWhiteSpace(description) ? "No details" : description.Trim());
                         cmd.ExecuteNonQuery();
                     }
                 }
             }
-            catch (Exception)
+            catch (MySqlException ex)
             {
-                // Silently fail - activity log should not crash the bot
+                System.Diagnostics.Debug.WriteLine($"MySQL Error in LogActivity: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in LogActivity: {ex.Message}");
             }
         }
 
@@ -296,6 +381,9 @@ namespace CyberSecurityBot.Services
         {
             List<string> activities = new List<string>();
 
+            if (limit < 1 || limit > 100)
+                limit = 10;
+
             try
             {
                 using (MySqlConnection conn = new MySqlConnection(connectionString))
@@ -321,9 +409,13 @@ namespace CyberSecurityBot.Services
                     }
                 }
             }
-            catch (Exception)
+            catch (MySqlException ex)
             {
-                activities.Add("Error loading activity log.");
+                activities.Add($"Database error loading activity log: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                activities.Add($"Error loading activity log: {ex.Message}");
             }
 
             return activities;
