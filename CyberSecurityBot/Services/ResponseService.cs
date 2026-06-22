@@ -2,7 +2,7 @@
 // File: Services/ResponseService.cs
 // Purpose: Core chatbot response engine with sequential progression,
 //          proactive engagement, memory personalisation, task management,
-//          and cybersecurity quiz mini-game.
+//          cybersecurity quiz mini-game, and advanced NLP simulation.
 // ============================================================
 
 using System;
@@ -26,6 +26,7 @@ namespace CyberSecurityBot.Services
         private string pendingTaskTitle;
         private DatabaseService _databaseService;
         private QuizService _quizService;
+        private NLPService _nlpService;
 
         public ResponseDelegate? CustomResponseHandler { get; set; }
 
@@ -41,6 +42,7 @@ namespace CyberSecurityBot.Services
             tipsGivenCount = new Dictionary<string, int>();
             _databaseService = new DatabaseService();
             _quizService = new QuizService();
+            _nlpService = new NLPService();
 
             keywordResponses = new Dictionary<string, List<string>>()
             {
@@ -133,7 +135,10 @@ namespace CyberSecurityBot.Services
                 return "I didn't quite understand that. Could you rephrase?";
             }
 
-            // Check for quiz commands first (if quiz is active)
+            // Use NLP to detect intent first
+            string intent = _nlpService.DetectIntent(normalised);
+
+            // Handle quiz answers (if quiz is active)
             if (_quizService.IsActive)
             {
                 string quizResponse = _quizService.SubmitAnswer(normalised);
@@ -141,20 +146,38 @@ namespace CyberSecurityBot.Services
                 return quizResponse;
             }
 
-            // Check for quiz start/cancel commands
-            if (normalised.Contains("start quiz") || normalised.Contains("quiz me") || normalised.Contains("take quiz"))
+            // Handle NLP-detected intents
+            switch (intent)
             {
-                _databaseService.LogActivity("Quiz Started", "User started cybersecurity quiz");
-                return _quizService.StartQuiz();
+                case "start_quiz":
+                    _databaseService.LogActivity("Quiz Started", "User started cybersecurity quiz");
+                    return _quizService.StartQuiz();
+
+                case "cancel_quiz":
+                    return _quizService.CancelQuiz();
+
+                case "help":
+                    _databaseService.LogActivity("Help Requested", "User asked for help/commands");
+                    return _nlpService.GetHelpMessage();
+
+                case "activity_log":
+                    return HandleActivityLogCommand();
+
+                case "add_task":
+                    return HandleNLPAddTask(normalised, memory);
+
+                case "view_tasks":
+                    return HandleNLPViewTasks();
+
+                case "complete_task":
+                    return HandleNLPCompleteTask(normalised);
+
+                case "delete_task":
+                    return HandleNLPDeleteTask(normalised);
             }
 
-            if (normalised.Contains("cancel quiz") || normalised.Contains("stop quiz"))
-            {
-                return _quizService.CancelQuiz();
-            }
-
-            // Check for task-related commands
-            string taskResponse = HandleTaskCommands(normalised, memory);
+            // Check for task flow states (if already in middle of adding task)
+            string taskResponse = HandleTaskFlowState(normalised, memory);
             if (!string.IsNullOrEmpty(taskResponse))
             {
                 return taskResponse;
@@ -210,7 +233,93 @@ namespace CyberSecurityBot.Services
          * [Accessed 15 June 2026].
          */
 
-        private string HandleTaskCommands(string input, MemoryService memory)
+        private string HandleNLPAddTask(string input, MemoryService memory)
+        {
+            // Extract task description from NLP patterns like "remind me to..."
+            string taskDesc = _nlpService.ExtractTaskDescription(input);
+
+            if (!string.IsNullOrEmpty(taskDesc) && taskDesc != input)
+            {
+                // Direct reminder-style input
+                pendingTaskTitle = taskDesc;
+                awaitingReminderDate = true;
+                return $"I'll help you remember: '{taskDesc}'. Would you like a reminder? If yes, type how many days (e.g., '3 days'), or type 'no'.";
+            }
+
+            // Standard add task flow
+            awaitingTaskDescription = true;
+            return "What task would you like to add? Please describe it (e.g., 'Review privacy settings').";
+        }
+
+        private string HandleNLPViewTasks()
+        {
+            List<string> tasks = _databaseService.GetAllTasks();
+            if (tasks.Count == 0)
+            {
+                return "You don't have any tasks yet. Type 'add task' or say 'remind me to...' to create one!";
+            }
+
+            string response = "Here are your cybersecurity tasks:\n\n";
+            foreach (string task in tasks)
+            {
+                response += task + "\n\n";
+            }
+            _databaseService.LogActivity("Viewed Tasks", "User viewed their task list");
+            return response.Trim();
+        }
+
+        private string HandleNLPCompleteTask(string input)
+        {
+            int taskId = ExtractTaskId(input);
+            if (taskId > 0)
+            {
+                bool success = _databaseService.MarkTaskAsCompleted(taskId);
+                if (success)
+                {
+                    _databaseService.LogActivity("Task Completed", $"Marked task #{taskId} as completed");
+                    return $"Task #{taskId} marked as completed! Great job staying on top of your cybersecurity.";
+                }
+                return $"Couldn't find task #{taskId}. Type 'show my tasks' to see your task IDs.";
+            }
+            return "Please specify which task number to complete (e.g., 'complete task 1').";
+        }
+
+        private string HandleNLPDeleteTask(string input)
+        {
+            int taskId = ExtractTaskId(input);
+            if (taskId > 0)
+            {
+                bool success = _databaseService.DeleteTask(taskId);
+                if (success)
+                {
+                    _databaseService.LogActivity("Task Deleted", $"Deleted task #{taskId}");
+                    return $"Task #{taskId} deleted successfully.";
+                }
+                return $"Couldn't find task #{taskId}. Type 'show my tasks' to see your task IDs.";
+            }
+            return "Please specify which task number to delete (e.g., 'delete task 1').";
+        }
+
+        private string HandleActivityLogCommand()
+        {
+            List<string> activities = _databaseService.GetRecentActivities(10);
+            if (activities.Count == 0)
+            {
+                return "I haven't recorded any activities yet. Try adding a task, taking the quiz, or exploring cybersecurity topics!";
+            }
+
+            string response = "Here's a summary of recent actions:\n\n";
+            int count = 1;
+            foreach (string activity in activities)
+            {
+                response += $"{count}. {activity}\n";
+                count++;
+            }
+            _databaseService.LogActivity("Viewed Activity Log", "User viewed activity log");
+            return response.Trim();
+        }
+
+        private string HandleTaskFlowState(string input, MemoryService memory)
         {
             // Add task flow
             if (awaitingTaskDescription)
@@ -247,65 +356,6 @@ namespace CyberSecurityBot.Services
                     }
                 }
                 return "I didn't understand the reminder time. Please try again with something like '3 days'.";
-            }
-
-            // Start add task
-            if (input.Contains("add task") || input.Contains("new task") || input.Contains("create task"))
-            {
-                awaitingTaskDescription = true;
-                return "What task would you like to add? Please describe it (e.g., 'Review privacy settings').";
-            }
-
-            // View tasks
-            if (input.Contains("show my tasks") || input.Contains("view tasks") || input.Contains("list tasks") || input.Contains("my tasks"))
-            {
-                List<string> tasks = _databaseService.GetAllTasks();
-                if (tasks.Count == 0)
-                {
-                    return "You don't have any tasks yet. Type 'add task' to create one!";
-                }
-
-                string response = "Here are your cybersecurity tasks:\n\n";
-                foreach (string task in tasks)
-                {
-                    response += task + "\n\n";
-                }
-                _databaseService.LogActivity("Viewed Tasks", "User viewed their task list");
-                return response.Trim();
-            }
-
-            // Complete task
-            if (input.Contains("complete task") || input.Contains("mark task") || input.Contains("done task"))
-            {
-                int taskId = ExtractTaskId(input);
-                if (taskId > 0)
-                {
-                    bool success = _databaseService.MarkTaskAsCompleted(taskId);
-                    if (success)
-                    {
-                        _databaseService.LogActivity("Task Completed", $"Marked task #{taskId} as completed");
-                        return $"Task #{taskId} marked as completed! Great job staying on top of your cybersecurity.";
-                    }
-                    return $"Couldn't find task #{taskId}. Type 'show my tasks' to see your task IDs.";
-                }
-                return "Please specify which task number to complete (e.g., 'complete task 1').";
-            }
-
-            // Delete task
-            if (input.Contains("delete task") || input.Contains("remove task"))
-            {
-                int taskId = ExtractTaskId(input);
-                if (taskId > 0)
-                {
-                    bool success = _databaseService.DeleteTask(taskId);
-                    if (success)
-                    {
-                        _databaseService.LogActivity("Task Deleted", $"Deleted task #{taskId}");
-                        return $"Task #{taskId} deleted successfully.";
-                    }
-                    return $"Couldn't find task #{taskId}. Type 'show my tasks' to see your task IDs.";
-                }
-                return "Please specify which task number to delete (e.g., 'delete task 1').";
             }
 
             return string.Empty;
@@ -544,11 +594,6 @@ namespace CyberSecurityBot.Services
             if (input.Contains("safe") || input.Contains("protect") || input.Contains("secure"))
             {
                 return $"{prefix}Staying safe online is all about being aware. Keep your software updated, use strong passwords, be careful with emails from unknown senders, and always verify before clicking links. Which of these would you like to know more about?";
-            }
-
-            if (input.Contains("help") || input.Contains("what can you do") || input.Contains("what do you do") || input.Contains("purpose"))
-            {
-                return $"{prefix}I'm here to help you stay safe online! I can give you tips on passwords, phishing, privacy, scams, malware, and safe browsing. I can also help you manage cybersecurity tasks or test your knowledge with a quiz. Just ask me about any of these topics!";
             }
 
             if (input.Contains("how are you") || input.Contains("how do you do"))
