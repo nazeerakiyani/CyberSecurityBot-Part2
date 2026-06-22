@@ -9,14 +9,16 @@ using CyberSecurityBot.Utilities;
 
 namespace CyberSecurityBot
 {
-    /// <summary>
-    /// Main window for the Cybersecurity Awareness Chatbot GUI.
-    /// </summary>
     public partial class MainWindow : Window
     {
         private ResponseService _responseService;
         private MemoryService _memoryService;
         private SentimentAnalyzer _sentimentAnalyzer;
+
+        // Task flow state — stored here to guarantee persistence
+        private string _pendingTaskTitle = "";
+        private bool _waitingForTaskDescription = false;
+        private bool _waitingForReminderDays = false;
 
         public MainWindow()
         {
@@ -26,7 +28,6 @@ namespace CyberSecurityBot
             _memoryService = new MemoryService();
             _sentimentAnalyzer = new SentimentAnalyzer();
 
-            // Test database connection on startup
             DatabaseService db = new DatabaseService();
             ShowBotMessage(db.TestConnectionMessage());
 
@@ -36,7 +37,6 @@ namespace CyberSecurityBot
             DisplayAsciiArt();
             PlayVoiceGreeting();
 
-            // Welcome message - first user input will be treated as name
             ShowBotMessage("Welcome! I'm your Cybersecurity Awareness Assistant. What's your name?");
         }
 
@@ -98,26 +98,69 @@ namespace CyberSecurityBot
             ShowUserMessage(input);
             UserInputTextBox.Clear();
 
+            // ===== TASK FLOW HANDLED DIRECTLY IN MAINWINDOW =====
+
+            // Step 2: User gave task description, ask for reminder days
+            if (_waitingForTaskDescription)
+            {
+                _pendingTaskTitle = input;
+                _waitingForTaskDescription = false;
+                _waitingForReminderDays = true;
+                ShowBotMessage($"Task added: '{input}'. How many days until reminder? (Type a number like 3, or 0 for no reminder)");
+                return;
+            }
+
+            // Step 3: User gave reminder days — THIS IS THE FIX
+            if (_waitingForReminderDays && !string.IsNullOrEmpty(_pendingTaskTitle))
+            {
+                int days;
+                if (int.TryParse(input, out days) && days >= 0)
+                {
+                    DatabaseService db = new DatabaseService();
+                    if (days == 0)
+                    {
+                        db.AddTask(_pendingTaskTitle, _pendingTaskTitle, null);
+                        ShowBotMessage($"Task '{_pendingTaskTitle}' added with no reminder!");
+                    }
+                    else
+                    {
+                        DateTime reminderDate = DateTime.Now.AddDays(days);
+                        db.AddTask(_pendingTaskTitle, _pendingTaskTitle, reminderDate);
+                        ShowBotMessage($"Got it! I'll remind you in {days} days (on {reminderDate:yyyy-MM-dd}). Task '{_pendingTaskTitle}' added successfully!");
+                    }
+                    db.LogActivity("Task Added", $"Added task: {_pendingTaskTitle} with {(days == 0 ? "no" : days + " day")} reminder");
+                    _pendingTaskTitle = "";
+                    _waitingForReminderDays = false;
+                    return;
+                }
+                else
+                {
+                    ShowBotMessage("Please type a number only (like 3, 7, 30) or 0 for no reminder.");
+                    return;
+                }
+            }
+
+            // Normal flow: pass to ResponseService
             string response = _responseService.GetResponse(input, _memoryService, _sentimentAnalyzer);
 
-            // Check if this is a quiz response with feedback + next question
+            // Step 1: Detect when ResponseService wants to start task flow
+            if (response.Contains("What task would you like to add?"))
+            {
+                _waitingForTaskDescription = true;
+            }
+
+            // Handle quiz response splitting
             if (response.Contains("=== QUIZ COMPLETE ==="))
             {
                 ShowBotMessage(response);
             }
             else if (response.Contains("✅ Correct!") || response.Contains("❌ Wrong!"))
             {
-                // Split feedback and next question
                 string[] parts = response.Split(new[] { "\n\n" }, StringSplitOptions.None);
-
-                // Show feedback first (Correct/Wrong + Explanation)
                 if (parts.Length >= 2)
                 {
-                    string feedback = parts[0] + "\n\n" + parts[1];
-                    ShowBotMessage(feedback);
+                    ShowBotMessage(parts[0] + "\n\n" + parts[1]);
                 }
-
-                // Show next question after a short delay
                 if (parts.Length > 2)
                 {
                     string nextQuestion = string.Join("\n\n", parts, 2, parts.Length - 2);

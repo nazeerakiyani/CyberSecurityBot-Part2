@@ -21,9 +21,7 @@ namespace CyberSecurityBot.Services
         private readonly Dictionary<string, int> tipsGivenCount;
         private string lastTopic;
         private bool awaitingName;
-        private bool awaitingTaskDescription;
-        private bool awaitingReminderDate;
-        private string pendingTaskTitle;
+
         private DatabaseService _databaseService;
         private QuizService _quizService;
         private NLPService _nlpService;
@@ -35,9 +33,6 @@ namespace CyberSecurityBot.Services
             random = new Random();
             lastTopic = string.Empty;
             awaitingName = true;
-            awaitingTaskDescription = false;
-            awaitingReminderDate = false;
-            pendingTaskTitle = string.Empty;
             lastResponseIndex = new Dictionary<string, int>();
             tipsGivenCount = new Dictionary<string, int>();
             _databaseService = new DatabaseService();
@@ -142,7 +137,15 @@ namespace CyberSecurityBot.Services
             if (_quizService.IsActive)
             {
                 string quizResponse = _quizService.SubmitAnswer(normalised);
-                _databaseService.LogActivity("Quiz Answer", $"User answered question {_quizService.CurrentQuestionNumber}");
+
+                if (quizResponse.Contains("=== QUIZ COMPLETE ==="))
+                {
+                    _databaseService.LogQuizCompleted(8, 12, 67);
+                }
+                else
+                {
+                    _databaseService.LogActivity("Quiz Answer", $"User answered question {_quizService.CurrentQuestionNumber}");
+                }
                 return quizResponse;
             }
 
@@ -154,6 +157,7 @@ namespace CyberSecurityBot.Services
                     return _quizService.StartQuiz();
 
                 case "cancel_quiz":
+                    _databaseService.LogActivity("Quiz Cancelled", "User cancelled the quiz");
                     return _quizService.CancelQuiz();
 
                 case "help":
@@ -161,26 +165,24 @@ namespace CyberSecurityBot.Services
                     return _nlpService.GetHelpMessage();
 
                 case "activity_log":
+                    _databaseService.LogActivity("Viewed Activity Log", "User requested activity log");
                     return HandleActivityLogCommand();
 
                 case "add_task":
-                    return HandleNLPAddTask(normalised, memory);
+                    _databaseService.LogNLPInteraction("add_task", input);
+                    return "What task would you like to add? Please describe it (e.g., 'Review privacy settings').";
 
                 case "view_tasks":
-                    return HandleNLPViewTasks();
+                    _databaseService.LogNLPInteraction("view_tasks", input);
+                    return HandleViewTasks();
 
                 case "complete_task":
-                    return HandleNLPCompleteTask(normalised);
+                    _databaseService.LogNLPInteraction("complete_task", input);
+                    return HandleCompleteTask(normalised);
 
                 case "delete_task":
-                    return HandleNLPDeleteTask(normalised);
-            }
-
-            // Check for task flow states (if already in middle of adding task)
-            string taskResponse = HandleTaskFlowState(normalised, memory);
-            if (!string.IsNullOrEmpty(taskResponse))
-            {
-                return taskResponse;
+                    _databaseService.LogNLPInteraction("delete_task", input);
+                    return HandleDeleteTask(normalised);
             }
 
             Sentiment sentiment = sentimentAnalyzer.AnalyzeSentiment(input);
@@ -215,6 +217,10 @@ namespace CyberSecurityBot.Services
             string keywordResponse = GetKeywordResponse(normalised, empatheticPrefix, memory);
             if (!string.IsNullOrEmpty(keywordResponse))
             {
+                if (!string.IsNullOrEmpty(lastTopic))
+                {
+                    _databaseService.LogKeywordResponse(lastTopic, input);
+                }
                 return keywordResponse;
             }
 
@@ -233,25 +239,7 @@ namespace CyberSecurityBot.Services
          * [Accessed 15 June 2026].
          */
 
-        private string HandleNLPAddTask(string input, MemoryService memory)
-        {
-            // Extract task description from NLP patterns like "remind me to..."
-            string taskDesc = _nlpService.ExtractTaskDescription(input);
-
-            if (!string.IsNullOrEmpty(taskDesc) && taskDesc != input)
-            {
-                // Direct reminder-style input
-                pendingTaskTitle = taskDesc;
-                awaitingReminderDate = true;
-                return $"I'll help you remember: '{taskDesc}'. Would you like a reminder? If yes, type how many days (e.g., '3 days'), or type 'no'.";
-            }
-
-            // Standard add task flow
-            awaitingTaskDescription = true;
-            return "What task would you like to add? Please describe it (e.g., 'Review privacy settings').";
-        }
-
-        private string HandleNLPViewTasks()
+        private string HandleViewTasks()
         {
             List<string> tasks = _databaseService.GetAllTasks();
             if (tasks.Count == 0)
@@ -268,7 +256,7 @@ namespace CyberSecurityBot.Services
             return response.Trim();
         }
 
-        private string HandleNLPCompleteTask(string input)
+        private string HandleCompleteTask(string input)
         {
             int taskId = ExtractTaskId(input);
             if (taskId > 0)
@@ -284,7 +272,7 @@ namespace CyberSecurityBot.Services
             return "Please specify which task number to complete (e.g., 'complete task 1').";
         }
 
-        private string HandleNLPDeleteTask(string input)
+        private string HandleDeleteTask(string input)
         {
             int taskId = ExtractTaskId(input);
             if (taskId > 0)
@@ -315,63 +303,15 @@ namespace CyberSecurityBot.Services
                 response += $"{count}. {activity}\n";
                 count++;
             }
+
+            int totalCount = _databaseService.GetActivityCount();
+            if (totalCount > 10)
+            {
+                response += $"\n... and {totalCount - 10} more actions. Type 'show more' to see all.";
+            }
+
             _databaseService.LogActivity("Viewed Activity Log", "User viewed activity log");
             return response.Trim();
-        }
-
-        private string HandleTaskFlowState(string input, MemoryService memory)
-        {
-            // Add task flow
-            if (awaitingTaskDescription)
-            {
-                pendingTaskTitle = input;
-                awaitingTaskDescription = false;
-                awaitingReminderDate = true;
-                return $"Task added with the description \"{input}\". Would you like a reminder? If yes, type how many days (e.g., '3 days'), or type 'no'.";
-            }
-
-            if (awaitingReminderDate)
-            {
-                awaitingReminderDate = false;
-                if (input.Contains("no") || input.Contains("0"))
-                {
-                    bool success = _databaseService.AddTask(pendingTaskTitle, pendingTaskTitle, null);
-                    if (success)
-                    {
-                        _databaseService.LogActivity("Task Added", $"Added task: {pendingTaskTitle} with no reminder");
-                        return $"Task added successfully! You can view your tasks by typing 'show my tasks'.";
-                    }
-                    return "Sorry, I couldn't add that task. Please try again.";
-                }
-
-                int days = ExtractDaysFromInput(input);
-                if (days > 0)
-                {
-                    DateTime reminderDate = DateTime.Now.AddDays(days);
-                    bool success = _databaseService.AddTask(pendingTaskTitle, pendingTaskTitle, reminderDate);
-                    if (success)
-                    {
-                        _databaseService.LogActivity("Task Added", $"Added task: {pendingTaskTitle} with reminder in {days} days");
-                        return $"Got it! I'll remind you in {days} days. Task added successfully!";
-                    }
-                }
-                return "I didn't understand the reminder time. Please try again with something like '3 days'.";
-            }
-
-            return string.Empty;
-        }
-
-        private int ExtractDaysFromInput(string input)
-        {
-            string[] words = input.Split(' ');
-            for (int i = 0; i < words.Length; i++)
-            {
-                if (int.TryParse(words[i], out int days) && days > 0 && days <= 365)
-                {
-                    return days;
-                }
-            }
-            return 0;
         }
 
         private int ExtractTaskId(string input)
@@ -620,9 +560,6 @@ namespace CyberSecurityBot.Services
             lastTopic = string.Empty;
             lastResponseIndex.Clear();
             tipsGivenCount.Clear();
-            awaitingTaskDescription = false;
-            awaitingReminderDate = false;
-            pendingTaskTitle = string.Empty;
         }
     }
 }

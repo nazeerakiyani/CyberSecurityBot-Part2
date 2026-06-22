@@ -1,10 +1,4 @@
-﻿// ============================================================
-// File: Services/DatabaseService.cs
-// Purpose: Handles all MySQL database operations for the chatbot.
-//          Includes task CRUD and activity logging.
-// ============================================================
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using MySql.Data.MySqlClient;
 
@@ -21,7 +15,7 @@ namespace CyberSecurityBot.Services
         /*
          * Oracle. 2024. MySQL Connector/NET Developer Guide. MySQL Documentation.
          * [Online]. Available at: https://dev.mysql.com/doc/connector-net/en/
-         * [Accessed 22 June 2026].
+         * [Accessed 15 June 2026].
          */
         public bool TestConnection()
         {
@@ -56,7 +50,7 @@ namespace CyberSecurityBot.Services
         /*
          * Stack Overflow Community, 2020. C# MySQL insert query with parameters.
          * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/65229757/c-sharp-mysql-insert-query-with-parameters
-         * [Accessed 22 June 2026].
+         * [Accessed 15 June 2026].
          */
         public bool AddTask(string title, string description, DateTime? reminderDate = null)
         {
@@ -87,7 +81,7 @@ namespace CyberSecurityBot.Services
         /*
          * C-Sharp Corner, 2023. CRUD Operations in C# with MySQL Database.
          * [Online]. Available at: https://www.c-sharpcorner.com/article/crud-operations-in-c-sharp-with-mysql-database/
-         * [Accessed 22 June 2026].
+         * [Accessed 15 June 2026].
          */
         public List<string> GetAllTasks()
         {
@@ -128,7 +122,7 @@ namespace CyberSecurityBot.Services
         /*
          * GeeksforGeeks, 2024. Update and Delete Data in MySQL using C#.
          * [Online]. Available at: https://www.geeksforgeeks.org/update-and-delete-data-in-mysql-using-c-sharp/
-         * [Accessed 22 June 2026].
+         * [Accessed 15 June 2026].
          */
         public bool MarkTaskAsCompleted(int taskId)
         {
@@ -155,7 +149,7 @@ namespace CyberSecurityBot.Services
         /*
          * TutorialsTeacher, 2024. C# MySQL Delete Operation.
          * [Online]. Available at: https://www.tutorialsteacher.com/csharp/csharp-mysql-delete
-         * [Accessed 22 June 2026].
+         * [Accessed 15 June 2026].
          */
         public bool DeleteTask(int taskId)
         {
@@ -184,7 +178,7 @@ namespace CyberSecurityBot.Services
         /*
          * Stack Overflow Community, 2021. Best practice for logging in C# application with database.
          * Stack Overflow. [Online]. Available at: https://stackoverflow.com/questions/68107055/best-practice-for-logging-in-c-sharp-application-with-database
-         * [Accessed 22 June 2026].
+         * [Accessed 15 June 2026].
          */
         public void LogActivity(string actionType, string description)
         {
@@ -209,10 +203,59 @@ namespace CyberSecurityBot.Services
             }
         }
 
+        /// <summary>
+        /// Logs a task addition with detailed reminder information.
+        /// </summary>
+        public void LogTaskAdded(string taskTitle, int? daysUntilReminder)
+        {
+            if (daysUntilReminder.HasValue)
+            {
+                DateTime reminderDate = DateTime.Now.AddDays(daysUntilReminder.Value);
+                LogActivity("Task Added", $"Task '{taskTitle}' added with reminder set for {daysUntilReminder} days from now ({reminderDate:yyyy-MM-dd})");
+            }
+            else
+            {
+                LogActivity("Task Added", $"Task '{taskTitle}' added with no reminder");
+            }
+        }
+
+        /// <summary>
+        /// Logs a reminder being set for an existing task.
+        /// </summary>
+        public void LogReminderSet(string taskTitle, int days)
+        {
+            DateTime reminderDate = DateTime.Now.AddDays(days);
+            LogActivity("Reminder Set", $"Reminder set for '{taskTitle}' on {reminderDate:yyyy-MM-dd} ({days} days from now)");
+        }
+
+        /// <summary>
+        /// Logs quiz completion with score.
+        /// </summary>
+        public void LogQuizCompleted(int score, int totalQuestions, double percentage)
+        {
+            LogActivity("Quiz Completed", $"Quiz completed with score {score}/{totalQuestions} ({percentage:F0}%)");
+        }
+
+        /// <summary>
+        /// Logs NLP interpretation of user command.
+        /// </summary>
+        public void LogNLPInteraction(string detectedIntent, string userInput)
+        {
+            LogActivity("NLP Interaction", $"Detected intent '{detectedIntent}' from input: '{userInput}'");
+        }
+
+        /// <summary>
+        /// Logs keyword detection response.
+        /// </summary>
+        public void LogKeywordResponse(string topic, string userInput)
+        {
+            LogActivity("Keyword Detected", $"Responded to '{topic}' from input: '{userInput}'");
+        }
+
         /*
          * C-Sharp Corner, 2022. Retrieve Data from MySQL Database in C#.
          * [Online]. Available at: https://www.c-sharpcorner.com/article/retrieve-data-from-mysql-database-in-c-sharp/
-         * [Accessed 22 June 2026].
+         * [Accessed 15 June 2026].
          */
         public List<string> GetRecentActivities(int limit = 10)
         {
@@ -249,6 +292,30 @@ namespace CyberSecurityBot.Services
             }
 
             return activities;
+        }
+
+        /// <summary>
+        /// Gets total count of activities for pagination.
+        /// </summary>
+        public int GetActivityCount()
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = "SELECT COUNT(*) FROM activity_log";
+
+                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                    {
+                        return Convert.ToInt32(cmd.ExecuteScalar());
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
         }
     }
 }
